@@ -1,0 +1,2 @@
+format:
+	astyle --options="formatter.conf" xvcpico.c
