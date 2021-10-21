@@ -5,6 +5,9 @@ allows using Raspberry Pico as a JTAG adapter for programming Xilinx FPGAs.
 
 It is derived from the excellent [pico-dirtyJtag](https://github.com/phdussud/pico-dirtyJtag/) project.
 
+A special shoutout goes to https://github.com/tom01h for crazily improving the
+performance of this project - thank you!
+
 The pinout is as follows:
 
 | Pin name | GPIO   |
@@ -99,10 +102,11 @@ programming speed is a requirement, I recommend using `xc3sprog` or
 This project might be one of the cheapest, most energy-efficient `Vivado-Compatible`
 JTAG programmers. I use this project as my "daily driver" now ;)
 
-Writing `ebaz4205_top.bit (371.6 KiB)` takes ~11.5 seconds. Don't
-`overestimate` the speed of human authors and Vivado though ;)
+Writing `ebaz4205_top.bit (371.6 KiB)` takes only ~2.5 seconds now - thanks to
+tom01h. Don't `overestimate` the speed of human programmers and Vivado though
+;)
 
-Writing `corescore_0.bit (2 MiB)` which uses ~100% FPGA LEs takes around ~56
+Writing `corescore_0.bit (2 MiB)` which uses ~100% FPGA LEs takes around ~9
 seconds.
 
 

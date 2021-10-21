@@ -3,6 +3,8 @@
 
    Glued together by Dhiru Kholia (VU3CER) in August, 2021.
 
+   Optimizations by https://github.com/tom01h (October 2021).
+
    Logic: We already have a working `xvcpi` program. We retain this program
    structure as it is, and replace the 'GPIO functions' with libusb calls. On
    the Raspberry Pico end, we provide functions to match these libusb calls.
@@ -64,38 +66,41 @@ enum dirtyJtagCmd {
   };
 */
 
-uint32_t gpio_xfer(uint32_t n, uint32_t tms, uint32_t tdi)
+void gpio_send(_Bool header, uint32_t len, uint32_t n, uint8_t *tms, uint8_t *tdi)
 {
-  unsigned char tx_buffer[64];  // 64 is the upper limit!
-  unsigned char result[64];  // 64 is the upper limit!
+  unsigned char tx_buffer[64];
   int actual_length, ret, header_offset = 0;
-  uint32_t tdo = 0;
 
-  int bytes = (n + 7) / 8;
+  int bytes = (n + 7) / 8; // 16 or 32
 
-  // Replace these with memcpy
-  tx_buffer[header_offset++] = CMD_XFER;
-  tx_buffer[header_offset++] = (n >> 0) & 0xFF;  // uint32_t to bytes
-  tx_buffer[header_offset++] = (n >> 8) & 0xFF;
-  tx_buffer[header_offset++] = (n >> 16) & 0xFF;
-  tx_buffer[header_offset++] = (n >> 24) & 0xFF;
+  if (header) {
+    // Replace these with memcpy
+    tx_buffer[header_offset++] = CMD_XFER;
+    tx_buffer[header_offset++] = (len >> 0) & 0xFF;  // uint32_t to bytes
+    tx_buffer[header_offset++] = (len >> 8) & 0xFF;
+    tx_buffer[header_offset++] = (len >> 16) & 0xFF;
+    tx_buffer[header_offset++] = (len >> 24) & 0xFF;
+  }
 
-  tx_buffer[header_offset++] = (tms >> 0) & 0xFF;  // uint32_t to bytes
-  tx_buffer[header_offset++] = (tms >> 8) & 0xFF;
-  tx_buffer[header_offset++] = (tms >> 16) & 0xFF;
-  tx_buffer[header_offset++] = (tms >> 24) & 0xFF;
-
-  tx_buffer[header_offset++] = (tdi >> 0) & 0xFF;  // uint32_t to bytes
-  tx_buffer[header_offset++] = (tdi >> 8) & 0xFF;
-  tx_buffer[header_offset++] = (tdi >> 16) & 0xFF;
-  tx_buffer[header_offset++] = (tdi >> 24) & 0xFF;
+  for (int i = 0; i < bytes; i++) {
+    tx_buffer[header_offset++] = tms[i];
+    tx_buffer[header_offset++] = tdi[i];
+  }
 
   actual_length = 0;
   ret = libusb_bulk_transfer(dev_handle, DIRTYJTAG_WRITE_EP, tx_buffer, header_offset, &actual_length, 1000);
   if ((ret < 0) || (actual_length != header_offset)) {
     printf("gpio_xfer_full: usb bulk write failed!\n");
-    return EXIT_FAILURE;
+    return;
   }
+}
+
+void gpio_recieve(uint32_t n, uint8_t *tdo)
+{
+  unsigned char result[64];
+  int actual_length, ret;
+
+  int bytes = (n + 7) / 8; // 16 or 32
 
   do {
     // Note: For a full-speed device, a bulk packet is limited to 64 bytes!
@@ -104,12 +109,14 @@ uint32_t gpio_xfer(uint32_t n, uint32_t tms, uint32_t tdi)
     if (ret < 0) {
       printf("gpio_xfer_full: usb bulk read failed!\n");
       printf("[Total Bytes] %d, [Return Code] %d [Actual Length] %d\n", bytes, ret, actual_length);
-      return EXIT_FAILURE;
+      return;
     }
   } while (actual_length == 0);
 
-  tdo = (result[3] << 24) | (result[2] << 16) | (result[1] << 8) | (result[0] << 0);
-  return tdo;
+  for (int i = 0; i < bytes; i++) {
+    tdo[i] = result[i];
+  }
+  return;
 }
 
 int device_init()
@@ -273,76 +280,54 @@ int handle_data(int fd) {
     int bytesLeft = nr_bytes;
     int bitsLeft = len;
     int byteIndex = 0;
-    uint32_t tdi, tms, tdo;
+    int byteIndexr = 0;
+    uint8_t tdi[32], tms[32], tdo[32];
+    _Bool header;
+    int size;
+    int sizer = 0;
+
+    header = 1;
 
     while (bytesLeft > 0) {
-      tms = 0;
-      tdi = 0;
-      tdo = 0;
-      if (bytesLeft >= 4) {  // We can (should) process bigger chunks here
-        memcpy(&tms, &buffer[byteIndex], 4);
-        memcpy(&tdi, &buffer[byteIndex + nr_bytes], 4);
-        tdo = gpio_xfer(32, tms, tdi);
-        memcpy(&result[byteIndex], &tdo, 4);
-        bytesLeft -= 4;
-        bitsLeft -= 32;
-        byteIndex += 4;
-        if (verbose) {
-          printf("LEN : 0x%08x\n", 32);
-          printf("TMS : 0x%08x\n", tms);
-          printf("TDI : 0x%08x\n", tdi);
-          printf("TDO : 0x%08x\n", tdo);
-        }
+      tms[0] = 0;
+      tdi[0] = 0;
+      tdo[0] = 0;
+      if (header) {
+        size = 16;
       } else {
-        memcpy(&tms, &buffer[byteIndex], bytesLeft);
-        memcpy(&tdi, &buffer[byteIndex + nr_bytes], bytesLeft);
-        tdo = gpio_xfer(bitsLeft, tms, tdi);
-        memcpy(&result[byteIndex], &tdo, bytesLeft);
-        bytesLeft = 0;
-        if (verbose) {
-          printf("LEN : 0x%08x\n", bitsLeft);
-          printf("TMS : 0x%08x\n", tms);
-          printf("TDI : 0x%08x\n", tdi);
-          printf("TDO : 0x%08x\n", tdo);
+        size = 32;
+      }
+      if (bytesLeft >= size) {
+        memcpy(tms, &buffer[byteIndex], size);
+        memcpy(tdi, &buffer[byteIndex + nr_bytes], size);
+        gpio_send(header, len, size * 8, tms, tdi);
+        if (!header) {
+          gpio_recieve(sizer * 8, tdo);
+          memcpy(&result[byteIndexr], tdo, sizer);
         }
+        sizer = size;
+        byteIndexr = byteIndex;
+        bytesLeft -= size;
+        bitsLeft -= size * 8;
+        byteIndex += size;
+        header = 0;
+      } else {
+        memcpy(tms, &buffer[byteIndex], bytesLeft);
+        memcpy(tdi, &buffer[byteIndex + nr_bytes], bytesLeft);
+        gpio_send(header, len, bitsLeft, tms, tdi);
+        if (!header) {
+          gpio_recieve(sizer * 8, tdo);
+          memcpy(&result[byteIndexr], tdo, sizer);
+        }
+        gpio_recieve(bitsLeft, tdo);
+        memcpy(&result[byteIndex], tdo, bytesLeft);
         break;
       }
     }
 
-    gpio_write(0, 1, 0);
-
-    while (bytesLeft > 0) {
-      tms = 0;
-      tdi = 0;
-      tdo = 0;
-      if (bytesLeft >= 4) {
-        memcpy(&tms, &buffer[byteIndex], 4);
-        memcpy(&tdi, &buffer[byteIndex + nr_bytes], 4);
-        tdo = gpio_xfer(32, tms, tdi);
-        memcpy(&result[byteIndex], &tdo, 4);
-        bytesLeft -= 4;
-        bitsLeft -= 32;
-        byteIndex += 4;
-        if (verbose) {
-          printf("LEN : 0x%08x\n", 32);
-          printf("TMS : 0x%08x\n", tms);
-          printf("TDI : 0x%08x\n", tdi);
-          printf("TDO : 0x%08x\n", tdo);
-        }
-      } else {
-        memcpy(&tms, &buffer[byteIndex], bytesLeft);
-        memcpy(&tdi, &buffer[byteIndex + nr_bytes], bytesLeft);
-        tdo = gpio_xfer(bitsLeft, tms, tdi);
-        memcpy(&result[byteIndex], &tdo, bytesLeft);
-        bytesLeft = 0;
-        if (verbose) {
-          printf("LEN : 0x%08x\n", bitsLeft);
-          printf("TMS : 0x%08x\n", tms);
-          printf("TDI : 0x%08x\n", tdi);
-          printf("TDO : 0x%08x\n", tdo);
-        }
-        break;
-      }
+    if (bytesLeft == 0) {
+      gpio_recieve(sizer * 8, tdo);
+      memcpy(&result[byteIndexr], tdo, sizer);
     }
 
     gpio_write(0, 1, 0);

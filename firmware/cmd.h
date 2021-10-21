@@ -38,6 +38,6 @@ static int tms_gpio = 19;
 // How does this 'feature' even work? Perhaps the 'slew rate' on Raspberry Pi
 // GPIO pins (not Pico?) is slow enough to require these delays? Or the "GPIO
 // engine" on Raspberry Pi is slow to register GPIO actions?
-#define jtag_delay   0
+#define jtag_delay   3
 // #define jtag_delay   5
 // #define jtag_delay   50
