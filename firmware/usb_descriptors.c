@@ -1,7 +1,12 @@
 /*
+ * This file is based on a file originally part of the
+ * MicroPython project, http://micropython.org/
+ *
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
+ * Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
+ * Copyright (c) 2019 Damien P. George
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,122 +25,114 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
- *
  */
 
 #include "tusb.h"
-#include "get_serial.h"
+#include "pico/unique_id.h"
 
+#define USBD_VID (0x2E8A)  // Raspberry Pi
+#define USBD_PID (0x000A)  // Raspberry Pi Pico SDK CDC
 
-//--------------------------------------------------------------------+
-// Device Descriptors
-//--------------------------------------------------------------------+
-tusb_desc_device_t const desc_device =
-{
-    .bLength            = sizeof(tusb_desc_device_t),
-    .bDescriptorType    = TUSB_DESC_DEVICE,
-    .bcdUSB             = 0x0110, // // USB Specification version 1.1
-    .bDeviceClass       = 0x00, // Each interface specifies its own
-    .bDeviceSubClass    = 0x00, // Each interface specifies its own
-    .bDeviceProtocol    = 0x00,
-    .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
+#define USBD_DESC_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_VENDOR_DESC_LEN + TUD_VENDOR_DESC_LEN)
+#define USBD_MAX_POWER_MA (250)
 
-	  .idVendor = 0x1209,
-	  .idProduct = 0xC0CA,
-	  .bcdDevice = 0x0110,
-    .iManufacturer      = 0x01,
-    .iProduct           = 0x02,
-    .iSerialNumber      = 0x03,
-    .bNumConfigurations = 0x01
+#define USBD_ITF_CDC (0)  // needs 2 interfaces
+#define USBD_ITF_NUM_PROBE0 (2)
+#define USBD_ITF_NUM_PROBE1 (3)
+#define USBD_ITF_MAX (4)
+
+#define USBD_CDC_EP_CMD (0x81)
+#define USBD_CDC_EP_OUT (0x02)
+#define USBD_CDC_EP_IN (0x82)
+#define USBD_CDC_CMD_MAX_SIZE (8)
+#define USBD_CDC_IN_OUT_MAX_SIZE (64)
+
+#define USBD_PROBE0_OUT_EP_NUM (0x03)
+#define USBD_PROBE0_IN_EP_NUM (0x84)
+#define USBD_PROBE1_OUT_EP_NUM (0x05)
+#define USBD_PROBE1_IN_EP_NUM (0x86)
+
+#define USBD_STR_0 (0x00)
+#define USBD_STR_MANUF (0x01)
+#define USBD_STR_PRODUCT (0x02)
+#define USBD_STR_SERIAL (0x03)
+#define USBD_STR_CDC (0x04)
+#define USBD_STR_VENDOR0 (0x05)
+#define USBD_STR_VENDOR1 (0x06)
+
+// Note: descriptors returned from callbacks must exist long enough for transfer to complete
+
+static const tusb_desc_device_t usbd_desc_device = {
+  .bLength = sizeof(tusb_desc_device_t),
+  .bDescriptorType = TUSB_DESC_DEVICE,
+  .bcdUSB = 0x0200,
+  .bDeviceClass = TUSB_CLASS_MISC,
+  .bDeviceSubClass = MISC_SUBCLASS_COMMON,
+  .bDeviceProtocol = MISC_PROTOCOL_IAD,
+  .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
+  .idVendor = USBD_VID,
+  .idProduct = USBD_PID,
+  .bcdDevice = 0x0110,
+  .iManufacturer = USBD_STR_MANUF,
+  .iProduct = USBD_STR_PRODUCT,
+  .iSerialNumber = USBD_STR_SERIAL,
+  .bNumConfigurations = 1,
 };
 
-// Invoked when received GET DEVICE DESCRIPTOR
-// Application return pointer to descriptor
-uint8_t const * tud_descriptor_device_cb(void)
-{
-  return (uint8_t const *) &desc_device;
+static const uint8_t usbd_desc_cfg[USBD_DESC_LEN] = {
+  TUD_CONFIG_DESCRIPTOR(1, USBD_ITF_MAX, USBD_STR_0, USBD_DESC_LEN, 0, USBD_MAX_POWER_MA),
+
+  TUD_CDC_DESCRIPTOR(USBD_ITF_CDC, USBD_STR_CDC, USBD_CDC_EP_CMD,
+                     USBD_CDC_CMD_MAX_SIZE, USBD_CDC_EP_OUT, USBD_CDC_EP_IN, USBD_CDC_IN_OUT_MAX_SIZE),
+
+  TUD_VENDOR_DESCRIPTOR(USBD_ITF_NUM_PROBE0, USBD_STR_VENDOR0, USBD_PROBE0_OUT_EP_NUM, USBD_PROBE0_IN_EP_NUM, 64),  //
+  TUD_VENDOR_DESCRIPTOR(USBD_ITF_NUM_PROBE1, USBD_STR_VENDOR1, USBD_PROBE1_OUT_EP_NUM, USBD_PROBE1_IN_EP_NUM, 64),  //
+};
+
+static char usbd_serial_str[PICO_UNIQUE_BOARD_ID_SIZE_BYTES * 2 + 1];
+
+static const char *const usbd_desc_str[] = {
+  [USBD_STR_MANUF] = "Raspberry Pi",
+  [USBD_STR_PRODUCT] = "Pico",
+  [USBD_STR_SERIAL] = usbd_serial_str,
+  [USBD_STR_CDC] = "Board CDC",
+  [USBD_STR_VENDOR0] = "Vendor0",
+  [USBD_STR_VENDOR1] = "Vendor1",
+};
+
+const uint8_t *tud_descriptor_device_cb(void) {
+  return (const uint8_t *)&usbd_desc_device;
 }
 
-//--------------------------------------------------------------------+
-// Configuration Descriptor
-//--------------------------------------------------------------------+
-
-enum
-{
-  ITF_NUM_PROBE,
-  ITF_NUM_TOTAL
-};
-
-#define PROBE_OUT_EP_NUM 0x01
-#define PROBE_IN_EP_NUM 0x82
-
-#define CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_VENDOR_DESC_LEN)
-
-uint8_t const desc_configuration[] =
-{
-  TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
-
-  // Interface 2
-  TUD_VENDOR_DESCRIPTOR(ITF_NUM_PROBE, 0, PROBE_OUT_EP_NUM, PROBE_IN_EP_NUM, 64)
-
-};
-
-// Invoked when received GET CONFIGURATION DESCRIPTOR
-// Application return pointer to descriptor
-// Descriptor contents must exist long enough for transfer to complete
-uint8_t const * tud_descriptor_configuration_cb(uint8_t index)
-{
-  (void) index; // for multiple configurations
-  return desc_configuration;
+const uint8_t *tud_descriptor_configuration_cb(__unused uint8_t index) {
+  return usbd_desc_cfg;
 }
 
-//--------------------------------------------------------------------+
-// String Descriptors
-//--------------------------------------------------------------------+
+const uint16_t *tud_descriptor_string_cb(uint8_t index, __unused uint16_t langid) {
+#define DESC_STR_MAX (20)
+  static uint16_t desc_str[DESC_STR_MAX];
 
-// array of pointer to string descriptors
-char const* string_desc_arr [] =
-{
-  (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
-  "Dhiru, Jean THOMAS", // 1: Manufacturer
-  "NotDirtyJTAG",       // 2: Product
-  usb_serial,           // 3: Serial, uses flash unique ID
-};
+  // Assign the SN using the unique flash id
+  if (!usbd_serial_str[0]) {
+    pico_get_unique_board_id_string(usbd_serial_str, sizeof(usbd_serial_str));
+  }
 
-static uint16_t _desc_str[32];
-
-// Invoked when received GET STRING DESCRIPTOR request
-// Application return pointer to descriptor, whose contents must exist long enough for transfer to complete
-uint16_t const* tud_descriptor_string_cb(uint8_t index, uint16_t langid)
-{
-  (void) langid;
-
-  uint8_t chr_count;
-
-  if ( index == 0)
-  {
-    memcpy(&_desc_str[1], string_desc_arr[0], 2);
-    chr_count = 1;
-  }else
-  {
-    // Convert ASCII string into UTF-16
-
-    if ( !(index < sizeof(string_desc_arr)/sizeof(string_desc_arr[0])) ) return NULL;
-
-    const char* str = string_desc_arr[index];
-
-    // Cap at max char
-    chr_count = strlen(str);
-    if ( chr_count > 31 ) chr_count = 31;
-
-    for(uint8_t i=0; i<chr_count; i++)
-    {
-      _desc_str[1+i] = str[i];
+  uint8_t len;
+  if (index == 0) {
+    desc_str[1] = 0x0409;  // supported language is English
+    len = 1;
+  } else {
+    if (index >= sizeof(usbd_desc_str) / sizeof(usbd_desc_str[0])) {
+      return NULL;
+    }
+    const char *str = usbd_desc_str[index];
+    for (len = 0; len < DESC_STR_MAX - 1 && str[len]; ++len) {
+      desc_str[1 + len] = str[len];
     }
   }
 
   // first byte is length (including header), second byte is string type
-  _desc_str[0] = (TUSB_DESC_STRING << 8 ) | (2*chr_count + 2);
+  desc_str[0] = (TUSB_DESC_STRING << 8) | (2 * len + 2);
 
-  return _desc_str;
+  return desc_str;
 }

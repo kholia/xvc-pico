@@ -33,6 +33,8 @@ static int tdo_gpio = 17;
 static int tck_gpio = 18;
 static int tms_gpio = 19;
 
+#define JTAG_ITF     1
+
 #define LED_PIN      25
 
 // How does this 'feature' even work? Perhaps the 'slew rate' on Raspberry Pi

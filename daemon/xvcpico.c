@@ -27,23 +27,28 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#define BUFFER_SIZE         2048
+// #define BUFFER_SIZE 1024 * 1024  // is super fast but doesn't work on ebaz4205 board ;(
+#define BUFFER_SIZE 1024 * 10 // NOTE: Reduce this in case of flashing problems!
 
+#ifdef __CYGWIN__
+#include <libusb-1.0/libusb.h>
+#else
 #include <libusb.h>
-#define DIRTYJTAG_VID       0x1209
-#define DIRTYJTAG_PID       0xC0CA
-#define DIRTYJTAG_INTF      0
-#define DIRTYJTAG_READ_EP   0x82
-#define DIRTYJTAG_WRITE_EP  0x01
+#endif
+#define XVCPICO_VID 0x2E8A
+#define XVCPICO_PID 0x000A
+#define XVCPICO_INTF 3
+#define XVCPICO_READ_EP 0x86
+#define XVCPICO_WRITE_EP 0x05
 libusb_context *usb_ctx;
-libusb_device_handle *dev_handle;
+libusb_device_handle *dev_handle = NULL;
 
 static char xvcInfo[64];
 
 // Note: Modified!
-enum dirtyJtagCmd {
-  CMD_STOP =  0x00,
-  CMD_XFER =  0x03,
+enum xvcPicoCmd {
+  CMD_STOP = 0x00,
+  CMD_XFER = 0x03,
   CMD_WRITE = 0x04,
 };
 
@@ -66,12 +71,11 @@ enum dirtyJtagCmd {
   };
 */
 
-void gpio_send(_Bool header, uint32_t len, uint32_t n, uint8_t *tms, uint8_t *tdi)
-{
-  unsigned char tx_buffer[64];
+void gpio_send(_Bool header, uint32_t len, uint32_t n, uint8_t *tms, uint8_t *tdi) {
+  unsigned char tx_buffer[512];
   int actual_length, ret, header_offset = 0;
 
-  int bytes = (n + 7) / 8; // 16 or 32
+  int bytes = (n + 7) / 8;
 
   if (header) {
     // Replace these with memcpy
@@ -88,24 +92,23 @@ void gpio_send(_Bool header, uint32_t len, uint32_t n, uint8_t *tms, uint8_t *td
   }
 
   actual_length = 0;
-  ret = libusb_bulk_transfer(dev_handle, DIRTYJTAG_WRITE_EP, tx_buffer, header_offset, &actual_length, 1000);
+  ret = libusb_bulk_transfer(dev_handle, XVCPICO_WRITE_EP, tx_buffer, header_offset, &actual_length, 1000);
   if ((ret < 0) || (actual_length != header_offset)) {
     printf("gpio_xfer_full: usb bulk write failed!\n");
     return;
   }
 }
 
-void gpio_recieve(uint32_t n, uint8_t *tdo)
-{
-  unsigned char result[64];
+void gpio_recieve(uint32_t n, uint8_t *tdo) {
+  unsigned char result[256];
   int actual_length, ret;
 
-  int bytes = (n + 7) / 8; // 16 or 32
+  int bytes = (n + 7) / 8;
 
   do {
     // Note: For a full-speed device, a bulk packet is limited to 64 bytes!
     // DirtyJTAG USB -> [32597.543687] usb 3-2.3.1: new full-speed USB device number 81 using xhci_hcd
-    ret = libusb_bulk_transfer(dev_handle, DIRTYJTAG_READ_EP, result, bytes, &actual_length, 2000);
+    ret = libusb_bulk_transfer(dev_handle, XVCPICO_READ_EP, result, bytes, &actual_length, 2000);
     if (ret < 0) {
       printf("gpio_xfer_full: usb bulk read failed!\n");
       printf("[Total Bytes] %d, [Return Code] %d [Actual Length] %d\n", bytes, ret, actual_length);
@@ -119,33 +122,69 @@ void gpio_recieve(uint32_t n, uint8_t *tdo)
   return;
 }
 
-int device_init()
-{
+int device_init() {
   int ret;
+  struct libusb_device **devs;
+  struct libusb_device *found = NULL;
+  struct libusb_device *dev;
+  size_t i = 0;
+  int r;
 
   if (libusb_init(&usb_ctx) < 0) {
     printf("[ERROR] libusb init failed!\n");
     return -1;
   }
-  dev_handle = libusb_open_device_with_vid_pid(usb_ctx, DIRTYJTAG_VID, DIRTYJTAG_PID);
+
+  // Copy of libusb_open_device_with_vid_pid() code
+  if (libusb_get_device_list(usb_ctx, &devs) < 0)
+    return -1; // XXX
+
+  while ((dev = devs[i++]) != NULL) {
+    struct libusb_device_descriptor desc;
+    r = libusb_get_device_descriptor(dev, &desc);
+    if (r < 0)
+      goto out;
+    if (desc.idVendor == XVCPICO_VID && desc.idProduct == XVCPICO_PID) {
+      found = dev;
+      break;
+    }
+  }
+
+  if (found) {
+    r = libusb_open(found, &dev_handle);
+    if (r < 0) {
+      printf("[ERROR in libusb_open()] %s\n", libusb_error_name(r));
+      dev_handle = NULL;
+    }
+  }
+
+out:
+  libusb_free_device_list(devs, 1);
+
   if (!dev_handle) {
     printf("[ERROR] failed to open usb device!\n");
     libusb_exit(usb_ctx);
     return -1;
   }
-  ret = libusb_claim_interface(dev_handle, DIRTYJTAG_INTF);
+  ret = libusb_claim_interface(dev_handle, XVCPICO_INTF);
   if (ret) {
-    printf("[!] libusb error while claiming DirtyJTAG interface\n");
+    printf("[ERROR in libusb_claim_interface()] %s\n", libusb_error_name(ret));
+    printf("[!] libusb error while claiming XvcPico interface\n");
     libusb_close(dev_handle);
     libusb_exit(usb_ctx);
     return -1;
   }
 
-  return 0; // success
+  dev = libusb_get_device(dev_handle);
+  int size;
+  size = libusb_get_max_iso_packet_size(dev, XVCPICO_WRITE_EP);
+
+  printf("write ep size = %d\n", size);
+
+  return size;  // success
 }
 
-void device_close()
-{
+void device_close() {
   if (dev_handle)
     libusb_close(dev_handle);
   if (usb_ctx)
@@ -156,8 +195,7 @@ void device_close()
 // - gpio_write(0, 1, 1);
 // - gpio_write(0, 1, 0);
 // Command Code -> CMD_WRITE
-int gpio_write(int tck, int tms, int tdi)
-{
+int gpio_write(int tck, int tms, int tdi) {
   int actual_length;
   uint8_t buf[8];
   u_int buffer_idx = 0;
@@ -167,7 +205,7 @@ int gpio_write(int tck, int tms, int tdi)
   buf[buffer_idx++] = tms & 1;
   buf[buffer_idx++] = tdi & 1;
   buf[buffer_idx++] = CMD_STOP;
-  int ret = libusb_bulk_transfer(dev_handle, DIRTYJTAG_WRITE_EP, buf, buffer_idx, &actual_length, 1000);
+  int ret = libusb_bulk_transfer(dev_handle, XVCPICO_WRITE_EP, buf, buffer_idx, &actual_length, 1000);
   if (ret < 0) {
     printf("gpio_write: usb bulk write failed\n");
     return -EXIT_FAILURE;
@@ -190,7 +228,7 @@ static int sread(int fd, void *target, int len) {
   return 1;
 }
 
-int handle_data(int fd) {
+int handle_data(int fd, int ep_size) {
   uint32_t len, nr_bytes;
 
   do {
@@ -281,7 +319,7 @@ int handle_data(int fd) {
     int bitsLeft = len;
     int byteIndex = 0;
     int byteIndexr = 0;
-    uint8_t tdi[32], tms[32], tdo[32];
+    uint8_t tdi[256], tms[256], tdo[256];
     _Bool header;
     int size;
     int sizer = 0;
@@ -293,9 +331,9 @@ int handle_data(int fd) {
       tdi[0] = 0;
       tdo[0] = 0;
       if (header) {
-        size = 16;
+        size = ep_size / 2 - 4;
       } else {
-        size = 32;
+        size = ep_size / 2;
       }
       if (bytesLeft >= size) {
         memcpy(tms, &buffer[byteIndex], size);
@@ -349,7 +387,8 @@ int main() {
 
   // Init
   sprintf(xvcInfo, "xvcServer_v1.0:%d\n", BUFFER_SIZE);
-  if (device_init() != 0) {
+  int ep_size = device_init();
+  if (ep_size < 0) {
     return -1;
   }
 
@@ -415,7 +454,7 @@ int main() {
             }
             FD_SET(newfd, &conn);
           }
-        } else if (handle_data(fd)) {
+        } else if (handle_data(fd, ep_size)) {
           if (verbose)
             printf("connection closed - fd %d\n", fd);
           close(fd);

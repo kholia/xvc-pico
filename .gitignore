@@ -1,3 +1,7 @@
+firmware/elf2uf2/
+firmware/generated/
+firmware/pico-sdk/
+CMakeFiles/
 CMakeLists.txt.user
 CMakeCache.txt
 CMakeFiles
@@ -14,3 +18,7 @@ xvc-pico
 *.swp
 *.orig
 *xvcd*
+*.bin
+*.dis
+*.elf*
+*.hex

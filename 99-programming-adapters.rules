@@ -1,0 +1,5 @@
+# dirtyJTAG
+ATTRS{idVendor}=="1209", ATTRS{idProduct}=="c0ca", MODE="664", GROUP="plugdev", TAG+="uaccess"
+
+# xvcPico
+ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", MODE="664", GROUP="plugdev", TAG+="uaccess"

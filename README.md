@@ -25,13 +25,17 @@ the Pico are electrically compatible before connecting them.
 
 ![Full Pinout](./raspberry-pi-pico-gpio-pinout-diagram.png)
 
-Note: This project was tested with Vivado 2021.1, Raspberry Pico as the JTAG
+Note: This project was tested with Vivado 2021.1, Raspberry Pi Pico as the JTAG
 programmer (XVC server), and EBAZ4205 'Development' FPGA Board in August 2021.
 
+Update: This project was tested with `Vivado ML Standard 2023.1`, Raspberry Pi
+Pico as the JTAG programmer (XVC server), and EBAZ4205 'Development' FPGA Board
+in May 2023.
 
-### Building pico-xvc
 
-Shortcut: Upload the pre-built `dirtyJtag.uf2` file to the Raspberry Pico
+### Building pico-xvc (for Linux users)
+
+Shortcut: Upload the pre-built `xvcPico.uf2` file to the Raspberry Pico
 Board. Done - skip to the next section.
 
 Install dependencies:
@@ -64,10 +68,18 @@ Build the Raspberry Pico's firmware:
 ```
 cd ~/repos/xvc-pico/firmware
 export PICO_SDK_PATH=${HOME}/repos/pico-sdk
-export CFLAGS="-Wall -Wextra -Wno-unused-function -Wno-unused-parameter -Wno-unused-but-set-variable"
 cmake .
 make -j4
 ```
+
+### Windows Notes
+
+Grab `xvcd-pico.exe` from the `builds` folder of this repository itself.
+
+You need to install the `libusbK` driver with Zadig (https://zadig.akeo.ie/)
+for all three `Interfaces`.
+
+Credit goes to https://github.com/benitoss/ for these instructions.
 
 
 ### Usage
@@ -89,7 +101,8 @@ I found `Maker Pi Pico Base` really helpful for debugging GPIO stuff.
 says that Xilinx Virtual Cable (XVC) protocol allows (local or remote) Vivado
 to connect to a target FPGA for debug leveraging standard Xilinx standard debug
 cores like Integrated Logic Analyzer - ILA, Virtual Input/Output - VIO, and
-others. So `ILA` should 'work' over our Raspberry Pico JTAG adapter.
+others. `ILA` works fine over our Raspberry Pico JTAG adapter. Vitis stuff is
+also supported.
 
 
 ### Rough Performance Stats ("Speed")
@@ -110,15 +123,35 @@ Writing `corescore_0.bit (2 MiB)` which uses ~100% FPGA LEs takes around ~9
 seconds.
 
 
+### Flash FPGA without Vivado
+
+```
+./openFPGALoader -c xvc-client --port 2542 --file-type bin ebaz4205_top.bin
+```
+
+
+### USB UARTs
+
+Connect Pico's hardware UART pins to FPGA's UART.
+
+```
+#define UART_TX_PIN 0
+#define UART_RX_PIN 1
+```
+
+Set UART of FPGA to 115200 baud rate.
+
+Note: /dev/ttyACM(n) will appear when Pico's USB is connected.
+
+
 ### Related Ideas / Projects
 
 - https://github.com/kholia/xvcpi
 - https://github.com/kholia/xvc-esp32
 - https://github.com/kholia/xvc-esp8266
 - https://github.com/phdussud/pico-dirtyJtag/
-  - Reuse PIO stuff
-  - Implement 'XVC' on top of regular 'DirtyJTAG' protocol
-  - Improve error handling, and recovery
 - https://github.com/kholia/Colorlight-5A-75B
 - https://github.com/fusesoc/blinky#ebaz4205-development-board
 - https://github.com/maxnet/pico-webserver/ approach (LWIP_SOCKET is not available yet!)
+- [NEXT] Do a 100% standalone port to Pico W ;)
+- [TODO] Make `BUFFER_SIZE` configurable - PRs welcome!

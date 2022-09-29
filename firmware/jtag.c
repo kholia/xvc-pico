@@ -31,7 +31,7 @@
 #include <hardware/gpio.h>
 
 #include "tusb.h"
-#include "cmd.h"
+#include "jtag.h"
 
 // Modified
 enum CommandIdentifier {
@@ -40,18 +40,7 @@ enum CommandIdentifier {
   CMD_WRITE = 0x04,
 };
 
-static void led_on()
-{
-  gpio_put(LED_PIN, 1);
-}
-
-static void led_off()
-{
-  gpio_put(LED_PIN, 0);
-}
-
-static inline void gpio_write(int tck, int tms, int tdi)
-{
+static inline void gpio_write(int tck, int tms, int tdi) {
   //gpio_put(tck_gpio, tck);
   //gpio_put(tms_gpio, tms);
   //gpio_put(tdi_gpio, tdi);
@@ -63,14 +52,12 @@ static inline void gpio_write(int tck, int tms, int tdi)
     asm volatile("nop");
 }
 
-static inline int gpio_read(void)
-{
+static inline int gpio_read(void) {
   return gpio_get(tdo_gpio);
 }
 
 // Handler for "gpio_xfer" on the host side
-static int __time_critical_func(cmd_xfer)(int bitsLeft, const uint8_t *commands, uint8_t* tx_buffer)
-{
+static int __time_critical_func(cmd_xfer)(int bitsLeft, const uint8_t *commands, uint8_t *tx_buffer) {
   int header_offset = 0;
   uint32_t n;
   int com_offset = 0;
@@ -78,8 +65,8 @@ static int __time_critical_func(cmd_xfer)(int bitsLeft, const uint8_t *commands,
   if (bitsLeft == 0) {
     com_offset = 5;
     bitsLeft = (commands[4] << 24) | (commands[3] << 16) | (commands[2] << 8) | (commands[1] << 0);
-    if (bitsLeft >= 16 * 8) {
-      n = 16 * 8;
+    if (bitsLeft >= 28 * 8) {
+      n = 28 * 8;
     } else {
       n = bitsLeft;
     }
@@ -91,7 +78,7 @@ static int __time_critical_func(cmd_xfer)(int bitsLeft, const uint8_t *commands,
     }
   }
 
-  int bytes = (n + 7) / 8; // 16 or 32
+  int bytes = (n + 7) / 8;  // 16 or 32
 
   for (uint32_t j = 0; j < bytes; j++) {
     uint8_t tdo = 0;
@@ -118,7 +105,8 @@ static int __time_critical_func(cmd_xfer)(int bitsLeft, const uint8_t *commands,
   }
 
   /* Send the transfer response back to host */
-  tud_vendor_write(tx_buffer, bytes);
+  tud_vendor_n_write(JTAG_ITF, tx_buffer, bytes);
+  tud_vendor_n_flush(JTAG_ITF);
 
   // debug code
   // led_on();
@@ -127,8 +115,7 @@ static int __time_critical_func(cmd_xfer)(int bitsLeft, const uint8_t *commands,
 }
 
 // Handler for "gpio_write" on the host side
-static void cmd_write(const uint8_t *commands)
-{
+static void cmd_write(const uint8_t *commands) {
   uint8_t tck, tms, tdi;
 
   tck = commands[1];
@@ -137,9 +124,8 @@ static void cmd_write(const uint8_t *commands)
   gpio_write(tck & 1, tms & 1, tdi & 1);
 }
 
-void __time_critical_func(cmd_handle)(uint8_t *rx_buf, __attribute__((unused)) uint32_t count, uint8_t *tx_buf)
-{
-  uint8_t *commands = (uint8_t*)rx_buf;
+void __time_critical_func(cmd_handle)(uint8_t *rx_buf, __attribute__((unused)) uint32_t count, uint8_t *tx_buf) {
+  uint8_t *commands = (uint8_t *)rx_buf;
   static int bitsLeft;
 
   if (bitsLeft != 0) {
