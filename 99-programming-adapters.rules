@@ -1,0 +1,2 @@
+# dirtyJTAG
+ATTRS{idVendor}=="1209", ATTRS{idProduct}=="c0ca", MODE="664", GROUP="plugdev", TAG+="uaccess"

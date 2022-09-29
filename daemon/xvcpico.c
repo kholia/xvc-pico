@@ -29,7 +29,11 @@
 
 #define BUFFER_SIZE         2048
 
+#ifdef __CYGWIN__
+#include <libusb-1.0/libusb.h>
+#else
 #include <libusb.h>
+#endif
 #define DIRTYJTAG_VID       0x1209
 #define DIRTYJTAG_PID       0xC0CA
 #define DIRTYJTAG_INTF      0
@@ -95,7 +99,7 @@ void gpio_send(_Bool header, uint32_t len, uint32_t n, uint8_t *tms, uint8_t *td
   }
 }
 
-void gpio_recieve(uint32_t n, uint8_t *tdo)
+void gpio_receive(uint32_t n, uint8_t *tdo)
 {
   unsigned char result[64];
   int actual_length, ret;
@@ -302,7 +306,7 @@ int handle_data(int fd) {
         memcpy(tdi, &buffer[byteIndex + nr_bytes], size);
         gpio_send(header, len, size * 8, tms, tdi);
         if (!header) {
-          gpio_recieve(sizer * 8, tdo);
+          gpio_receive(sizer * 8, tdo);
           memcpy(&result[byteIndexr], tdo, sizer);
         }
         sizer = size;
@@ -316,17 +320,17 @@ int handle_data(int fd) {
         memcpy(tdi, &buffer[byteIndex + nr_bytes], bytesLeft);
         gpio_send(header, len, bitsLeft, tms, tdi);
         if (!header) {
-          gpio_recieve(sizer * 8, tdo);
+          gpio_receive(sizer * 8, tdo);
           memcpy(&result[byteIndexr], tdo, sizer);
         }
-        gpio_recieve(bitsLeft, tdo);
+        gpio_receive(bitsLeft, tdo);
         memcpy(&result[byteIndex], tdo, bytesLeft);
         break;
       }
     }
 
     if (bytesLeft == 0) {
-      gpio_recieve(sizer * 8, tdo);
+      gpio_receive(sizer * 8, tdo);
       memcpy(&result[byteIndexr], tdo, sizer);
     }
 
