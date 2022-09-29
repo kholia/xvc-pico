@@ -1,2 +1,5 @@
 format:
 	astyle --options="formatter.conf" xvcpico.c
+
+build:
+	gcc -I/usr/include/libusb-1.0/ xvcpico.c -lusb-1.0 -o xvcd

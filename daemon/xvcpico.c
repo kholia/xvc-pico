@@ -29,7 +29,11 @@
 
 #define BUFFER_SIZE         2048
 
+#ifdef __CYGWIN__
+#include <libusb-1.0/libusb.h>
+#else
 #include <libusb.h>
+#endif
 #define DIRTYJTAG_VID       0x1209
 #define DIRTYJTAG_PID       0xC0CA
 #define DIRTYJTAG_INTF      0
