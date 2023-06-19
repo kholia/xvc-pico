@@ -102,7 +102,7 @@ Options:
 
 
 In Vivado, select the `Add Xilinx Virtual Cable (XVC)` option in the `Hardware
-Manager` and mention the `IP address` of the host computer.
+Manager` and mention the `IP address` and the `Port` of the host computer.
 
 ![Vivado Usage](./Usage-in-Vivado.png)
 
