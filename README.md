@@ -94,11 +94,11 @@ Usage: ./xvcd-pico  [-b Buffer_size] [-p Server_port] [-v]
 ```
 Options:
 
--b Buffer_size  ->  Modify the buffer size (default 2048)
+    -b Buffer_size  ->  Modify the buffer size (default 2048)
 
--p Server_port  ->  Port used to the XVC Server Daemonm (default 2542)
+    -p Server_port  ->  Port used to the XVC Server Daemonm (default 2542)
 
--V              ->  Activate the verbose Mode on (default is OFF)
+    -V              ->  Activate the verbose Mode on (default is OFF)
 
 
 In Vivado, select the `Add Xilinx Virtual Cable (XVC)` option in the `Hardware
