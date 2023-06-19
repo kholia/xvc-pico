@@ -27,7 +27,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#define BUFFER_SIZE         2048
+//#define BUFFER_SIZE         2048
 
 #ifdef __CYGWIN__
 #include <libusb-1.0/libusb.h>
@@ -180,7 +180,7 @@ int gpio_write(int tck, int tms, int tdi)
   return 0;
 }
 
-static int verbose = 0;
+//static int verbose = 0;
 
 static int sread(int fd, void *target, int len) {
   unsigned char *t = target;
@@ -194,12 +194,12 @@ static int sread(int fd, void *target, int len) {
   return 1;
 }
 
-int handle_data(int fd) {
+int handle_data(int fd, int buffer_size, int verbose) {
   uint32_t len, nr_bytes;
 
   do {
     char cmd[16];
-    unsigned char buffer[BUFFER_SIZE], result[BUFFER_SIZE / 2];
+    unsigned char buffer[buffer_size], result[buffer_size / 2];
     memset(cmd, 0, 16);
 
     if (sread(fd, cmd, 2) != 1)
@@ -346,18 +346,83 @@ int handle_data(int fd) {
   return 0;
 }
 
-int main() {
+int main(int argc, char **argv) {
   int i;
   int s;
   struct sockaddr_in address;
-
+  
+  int buffer_size;    //  buffer size parameter
+  int xvc_port;       //  XVC port
+  int verbose;        //  Verbose parameter
+  
+  //  set arguments defaults
+  buffer_size = 2048;
+  xvc_port = 2542;
+  verbose = 0;
+  
+  int opt, tpnd, tbnd;
+  tpnd = 0;
+  tbnd = 0;
+ 
+  
+  printf("XVC Pi-Pico Server v1.0 by Dhiru Kholia\n");
+  printf("Derived from pico-dirtyJtag project\n");
+  
+  // Parse the command line argument options
+  while ((opt = getopt(argc, argv, "hvp:b:")) != -1) {
+	switch (opt) {
+		case 'h':
+            printf("Usage: %s  [-b Buffer_size] [-p Server_port] [-v]\n", argv[0] );
+            return 0;
+        case 'v':
+            verbose++;
+			if ( verbose>1){
+				printf("Don't repeat the -v option");
+				printf("Usage: %s  [-b Buffer_size] [-p Server_port] [-v]\n", argv[0] );
+				return 0;
+			}
+            break;
+		case 'b':
+            buffer_size = atoi(optarg);
+            tbnd++;
+			if (tbnd >1){
+				printf("Don't repeat the -b option");
+				printf("Usage: %s  [-b Buffer_size] [-p Server_port] [-v]\n", argv[0] );
+				return 0;
+			}
+            break;
+        case 'p':
+            xvc_port = atoi(optarg);
+            tpnd = 1;
+			if (tpnd >1){
+				printf("Don't repeat the -p option");
+				printf("Usage: %s  [-b Buffer_size] [-p Server_port] [-v]\n", argv[0] );
+				return 0;
+			}
+            break;
+        default: /* '?' */
+            printf("Usage: %s  [-b Buffer_size] [-p Server_port] [-v]\n", argv[0] );
+            exit(EXIT_FAILURE);
+        }
+  }
+    
+  printf("	Bufer Size: %d\n", buffer_size);
+  printf("	XVC Server Port: %d\n", xvc_port);
+  printf("	Verbose Mode: ");
+  if (verbose) {
+	printf("Yes\n");
+	printf("---------------------------------\n\n");
+  } else {
+	printf("No\n");  
+  }
+  
   // Init
-  sprintf(xvcInfo, "xvcServer_v1.0:%d\n", BUFFER_SIZE);
+  sprintf(xvcInfo, "xvcServer_v1.0:");
   if (device_init() != 0) {
     return -1;
   }
 
-  fprintf(stderr, "XVCPI is listening now!\n");
+  fprintf(stderr, "XVCPI is listening now in port: %d !\n", xvc_port);
 
   s = socket(AF_INET, SOCK_STREAM, 0);
   if (s < 0) {
@@ -368,7 +433,7 @@ int main() {
   i = 1;
   setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &i, sizeof i);
   address.sin_addr.s_addr = INADDR_ANY;
-  address.sin_port = htons(2542);
+  address.sin_port = htons(xvc_port);
   address.sin_family = AF_INET;
 
   if (bind(s, (struct sockaddr *)&address, sizeof(address)) < 0) {
@@ -419,7 +484,7 @@ int main() {
             }
             FD_SET(newfd, &conn);
           }
-        } else if (handle_data(fd)) {
+        } else if (handle_data(fd,buffer_size,verbose)) {
           if (verbose)
             printf("connection closed - fd %d\n", fd);
           close(fd);
