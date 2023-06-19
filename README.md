@@ -93,6 +93,7 @@ In the host computer with the Pi Pico connected, run the XVC Daemon Server.
 Usage: ./xvcd-pico  [-b Buffer_size] [-p Server_port] [-v]
 ```
 Options:
+
 -b Buffer_size  ->  Modify the buffer size (default 2048)
 -p Server_port  ->  Port used to the XVC Server Daemonm (default 2542)
 -V              ->  Activate the verbose Mode on (default is OFF)
