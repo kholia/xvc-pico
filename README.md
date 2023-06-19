@@ -88,6 +88,13 @@ Credit goes to https://github.com/benitoss/ for these instructions.
 
 ### Usage
 
+In the host computer with the Pi Pico connected:
+First run the XVC Daemon Server
+```
+Usage: %s  [-b Buffer_size] [-p Server_port] [-v]
+```
+
+In Vivado: 
 Select the `Add Xilinx Virtual Cable (XVC)` option in the `Hardware
 Manager` in Vivado and mention the `IP address` of the host computer.
 
