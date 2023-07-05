@@ -15,7 +15,6 @@
    - https://github.com/phdussud/pico-dirtyJtag/blob/master/cmd.c
 
    See Licensing information at End of File.
-
 */
 
 #include <stdint.h>
