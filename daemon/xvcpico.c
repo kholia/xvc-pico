@@ -28,7 +28,7 @@
 #include <sys/types.h>
 
 // #define BUFFER_SIZE 1024 * 1024  // is super fast but doesn't work on ebaz4205 board ;(
-#define BUFFER_SIZE 1024 * 10 // NOTE: Reduce this in case of flashing problems!
+#define BUFFER_SIZE 1024 * 20 // NOTE: Reduce this in case of flashing problems!
 
 #ifdef __CYGWIN__
 #include <libusb-1.0/libusb.h>
@@ -179,7 +179,7 @@ out:
   int size;
   size = libusb_get_max_iso_packet_size(dev, XVCPICO_WRITE_EP);
 
-  printf("write ep size = %d\n", size);
+  // printf("write ep size = %d\n", size);
 
   return size;  // success
 }
@@ -228,12 +228,13 @@ static int sread(int fd, void *target, int len) {
   return 1;
 }
 
+static unsigned char buffer[BUFFER_SIZE], result[BUFFER_SIZE / 2];
+
 int handle_data(int fd, int ep_size) {
   uint32_t len, nr_bytes;
 
   do {
     char cmd[16];
-    unsigned char buffer[BUFFER_SIZE], result[BUFFER_SIZE / 2];
     memset(cmd, 0, 16);
 
     if (sread(fd, cmd, 2) != 1)
@@ -244,7 +245,7 @@ int handle_data(int fd, int ep_size) {
         return 1;
       memcpy(result, xvcInfo, strlen(xvcInfo));
       if (write(fd, result, strlen(xvcInfo)) != (ssize_t)strlen(xvcInfo)) {
-        perror("write");
+        perror("write 1");
         return 1;
       }
       if (verbose) {
@@ -257,8 +258,8 @@ int handle_data(int fd, int ep_size) {
         return 1;
       memcpy(result, cmd + 5, 4);
       if (write(fd, result, 4) != 4) {
-        perror("write");
-        return 1;
+        perror("write 2");
+        return 2;
       }
       if (verbose) {
         printf("%u : Received command: 'settck'\n", (int)time(NULL));
@@ -371,8 +372,8 @@ int handle_data(int fd, int ep_size) {
     gpio_write(0, 1, 0);
 
     if (write(fd, result, nr_bytes) != nr_bytes) {
-      perror("write");
-      return 1;
+      perror("write 3: Reduce BUFFER_SIZE in xvcpico.c");
+      return 3;
     }
 
   } while (1);
@@ -391,8 +392,8 @@ int main() {
   if (ep_size < 0) {
     return -1;
   }
-
-  fprintf(stderr, "XVCPI is listening now!\n");
+  fprintf(stderr, "NB: ep_size => %d\n", ep_size);
+  fprintf(stderr, "XVCPI is listening now with BUFFER_SIZE => %d!\n", BUFFER_SIZE/2);
 
   s = socket(AF_INET, SOCK_STREAM, 0);
   if (s < 0) {

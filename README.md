@@ -51,6 +51,9 @@ mkdir ~/repos
 cd ~/repos
 
 git clone https://github.com/raspberrypi/pico-sdk.git
+cd pico-sdk; git submodule update --init
+
+cd ~/repos
 git clone https://github.com/kholia/xvc-pico.git
 ```
 
@@ -76,16 +79,27 @@ make -j4
 
 Grab `xvcd-pico.exe` from the `builds` folder of this repository itself.
 
-You need to install the `libusbK` driver with Zadig (https://zadig.akeo.ie/)
-for all three `Interfaces`.
+You need to install the `libusbK` driver with `Zadig` (https://zadig.akeo.ie/).
+
+OR
+
+You can install the WinLibUSB driver from `USB Drive Tool Application`
+(https://visualgdb.com/UsbDriverTool/).
 
 Credit goes to https://github.com/benitoss/ for these instructions.
 
 
 ### Usage
 
-Select the `Add Xilinx Virtual Cable (XVC)` option in the `Hardware
-Manager` in Vivado and mention the `IP address` of the host computer.
+On the host computer with the Raspberry Pi Pico connected, run the XVC Daemon
+Server.
+
+```
+./xvcd-pico
+```
+
+In Vivado, select the `Add Xilinx Virtual Cable (XVC)` option in the `Hardware
+Manager` and mention the `IP address` and the `Port` of the host computer.
 
 ![Vivado Usage](./Usage-in-Vivado.png)
 
@@ -118,6 +132,23 @@ JTAG programmers. I use this project as my "daily driver" now ;)
 Writing `ebaz4205_top.bit (371.6 KiB)` takes only ~2.5 seconds now - thanks to
 tom01h. Don't `overestimate` the speed of human programmers and Vivado though
 ;)
+
+```
+$ time ./openFPGALoader -c xvc-client --port 2542 --file-type bin ebaz4205_top.bin
+empty
+detected xvcServer version v1.0 packet size 12288
+freq 6000000 166.666667 166 0
+a6 0 0 0
+Open file DONE
+Parse file DONE
+load program
+Load SRAM: [==================================================] 100.00%
+Done
+./openFPGALoader -c xvc-client --port 2542 --file-type bin ebaz4205_top.bin  0.00s user 0.01s system 0% cpu 7.389 total
+```
+
+It seems `openFPGALoader` is a lot slower than Vivado in programming devices
+via `XVC`!?
 
 Writing `corescore_0.bit (2 MiB)` which uses ~100% FPGA LEs takes around ~9
 seconds.
@@ -154,4 +185,3 @@ Note: /dev/ttyACM(n) will appear when Pico's USB is connected.
 - https://github.com/fusesoc/blinky#ebaz4205-development-board
 - https://github.com/maxnet/pico-webserver/ approach (LWIP_SOCKET is not available yet!)
 - [NEXT] Do a 100% standalone port to Pico W ;)
-- [TODO] Make `BUFFER_SIZE` configurable - PRs welcome!
