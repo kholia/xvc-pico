@@ -180,6 +180,14 @@ Set UART of FPGA to 115200 baud rate.
 Note: /dev/ttyACM(n) will appear when Pico's USB is connected.
 
 
+### Known issue: dense bitstreams on Zynq-7000
+
+Bitstreams with large dense data regions (big BRAM INIT contents) can
+consistently fail to program on Zynq-7000 with `End of startup status: LOW`
+(`BAD_PACKET_ERROR` in CONFIG_STATUS), while mostly-empty bitstreams from the
+same setup program fine. Details, a minimal reproducer and a PCAP-based
+workaround for Zynq users: [docs/zynq-dense-bitstreams.md](docs/zynq-dense-bitstreams.md).
+
 ### Related Ideas / Projects
 
 - https://github.com/kholia/xvcpi
