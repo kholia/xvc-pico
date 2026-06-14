@@ -96,6 +96,15 @@ int main() {
   gpio_put(tck_gpio, 0);
   gpio_put(tms_gpio, 1);
 
+  // Set JTAG GPIO pins to slow slew rate and lowest drive strength (soft edges)
+  // to avoid signal integrity issues (ringing/reflections) during dense bitstream shifts.
+  gpio_set_slew_rate(tdi_gpio, GPIO_SLEW_RATE_SLOW);
+  gpio_set_slew_rate(tck_gpio, GPIO_SLEW_RATE_SLOW);
+  gpio_set_slew_rate(tms_gpio, GPIO_SLEW_RATE_SLOW);
+  gpio_set_drive_strength(tdi_gpio, GPIO_DRIVE_STRENGTH_2MA);
+  gpio_set_drive_strength(tck_gpio, GPIO_DRIVE_STRENGTH_2MA);
+  gpio_set_drive_strength(tms_gpio, GPIO_DRIVE_STRENGTH_2MA);
+
   // Set up our UART with the required speed.
   uart_init(UART_ID, BAUD_RATE);
   gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
