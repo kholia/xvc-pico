@@ -8,9 +8,9 @@ jobs:
 
     - run: git config --global core.autocrlf input
 
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
-    - uses: cygwin/cygwin-install-action@master
+    - uses: cygwin/cygwin-install-action@v6
       with:
         platform: 'amd64'
         packages: |
@@ -27,7 +27,7 @@ jobs:
     - run: find .
 
     - name: archive production artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v7
       with:
         name: xvcd-pico
         path: |
